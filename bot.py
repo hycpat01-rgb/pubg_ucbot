@@ -13,7 +13,7 @@ TOKEN = "8892100518:AAFJ6-7pM2hwP9LEJkAPwOloaqiaku9Dy7w"
 ADMIN_CHAT_ID = 1231002682  # Ваш цифровой Telegram ID
 
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (963) 258 78 84`\n(Получатель: Нусратулло Носиров.)"
-ASIA_DETAILS = "🌏 **Карты стран Азии (Казахстан / Узбекистан / др.):**\nНомер карты: `4400 0555 3145 2345 `\n(Банк /Душанбе Сити Получатель)"
+ASIA_DETAILS = "🌏 **Карты стран Азии (Казахстан / Узбекистан / др.):**\nНомер карты: `4400 0555 3145 2345`\n(Банк / Душанбе Сити Получатель)"
 
 ADMIN_USERNAME = "@arrhiv1"
 # ===============================================================
@@ -125,6 +125,7 @@ async def process_player_id(message: types.Message, state: FSMContext):
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET player_id = ? WHERE user_id = ?", (player_id, user_id))
+    conn.commit() # Сохраняем Player ID
     
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
     balance_row = cursor.fetchone()
@@ -285,7 +286,7 @@ async def admin_order_done(callback: types.CallbackQuery):
     )
     await callback.answer("Заказ отмечен как выполненный!")
 
-# ----------------- ПОПОЛНЕНИЕ БАЛАНСА АВТОМАТИЧЕСКИ -----------------
+# ----------------- ПОПОЛНЕНИЕ БАЛАНСА ЧЕРЕЗ АДМИНА -----------------
 @dp.callback_query(F.data == "top_up")
 async def top_up_balance(callback: types.CallbackQuery):
     await callback.answer()
@@ -350,27 +351,24 @@ async def process_screenshot(message: types.Message, state: FSMContext):
     
     await state.clear()
     
-    # Автоматическое пополнение баланса в базе данных
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    new_balance = row[0] if row else amount
-    conn.close()
+    # Кнопки для администратора для подтверждения пополнения
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Зачислить баланс", callback_data=f"confirm_topup_{user_id}_{amount}")
+    builder.button(text="❌ Отклонить", callback_data=f"cancel_topup_{user_id}")
+    builder.adjust(2)
     
-    # Отправка копии чека администратору для контроля
+    # Отправляем чек администратору
     try:
         await bot.send_photo(
             ADMIN_CHAT_ID,
             photo=photo_id,
             caption=(
-                f"🔔 **АВТО-ПОПОЛНЕНИЕ БАЛАНСА!**\n\n"
+                f"🔔 **Заявка на пополнение баланса!**\n\n"
                 f"👤 От: @{username} (ID: `{user_id}`)\n"
-                f"💵 Зачислено: **{amount} ₽**\n"
-                f"💰 Новый баланс: **{new_balance} ₽**\n\n"
-                f"*(Баланс зачислен автоматически)*"
+                f"💵 Сумма: **{amount} ₽**\n\n"
+                f"Нажмите кнопку ниже для зачисления средств:"
             ),
+            reply_markup=builder.as_markup(),
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -378,11 +376,66 @@ async def process_screenshot(message: types.Message, state: FSMContext):
     
     # Уведомление пользователю
     await message.answer(
-        f"🎉 **Баланс успешно пополнен автоматически!**\n\n"
-        f"➕ Зачислено: **{amount} ₽**\n"
-        f"💰 Ваш новый баланс: **{new_balance} ₽**",
+        "✅ **Скриншот успешно отправлен администратору!**\n\n"
+        "Баланс будет зачислен сразу после того, как администратор проверит перевод.",
         parse_mode="Markdown"
     )
+
+@dp.callback_query(F.data.startswith("confirm_topup_"))
+async def admin_confirm_topup(callback: types.CallbackQuery):
+    _, _, user_id_str, amount_str = callback.data.split("_")
+    user_id = int(user_id_str)
+    amount = float(amount_str)
+    
+    # Пополняем баланс в базе данных и сохраняем изменения (commit)
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+    conn.commit()
+    
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    new_balance = row[0] if row else amount
+    conn.close()
+    
+    # Уведомляем пользователя
+    try:
+        await bot.send_message(
+            user_id,
+            f"🎉 **Ваш баланс успешно пополнен!**\n\n"
+            f"➕ Зачислено: **{amount} ₽**\n"
+            f"💰 Новый баланс: **{new_balance} ₽**",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление пользователю: {e}")
+        
+    # Меняем статус у админа
+    await callback.message.edit_caption(
+        caption=callback.message.caption + f"\n\n✅ **СТАТУС: Баланс зачислен ({amount} ₽)**",
+        reply_markup=None
+    )
+    await callback.answer("Средства успешно зачислены пользователю!")
+
+@dp.callback_query(F.data.startswith("cancel_topup_"))
+async def admin_cancel_topup(callback: types.CallbackQuery):
+    user_id = int(callback.data.split("_")[2])
+    
+    try:
+        await bot.send_message(
+            user_id,
+            "❌ **Ваша заявка на пополнение баланса была отклонена администратором.**\n"
+            "Если возникли вопросы, обратитесь в поддержку.",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+        
+    await callback.message.edit_caption(
+        caption=callback.message.caption + f"\n\n❌ **СТАТУС: Отклонено**",
+        reply_markup=None
+    )
+    await callback.answer("Заявка отклонена.")
 
 # ----------------- ПРОФИЛЬ И ПРОЧЕЕ -----------------
 @dp.callback_query(F.data == "profile")
