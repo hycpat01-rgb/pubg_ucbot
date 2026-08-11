@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import asyncio
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -68,7 +69,7 @@ async def uc_packages(callback: types.CallbackQuery):
     builder.button(text="3850 UC - 4600 ₽", callback_data="uc_3850")
     builder.button(text="8100 UC - 9200 ₽", callback_data="uc_8100")
     builder.button(text="⬅️ Назад", callback_data="back_home")
-    builder.adjust(2, 2, 2, 1) # Расположение кнопок по 2 в ряд
+    builder.adjust(2, 2, 2, 1)
     
     await callback.message.edit_text(
         "📦 **Выберите нужный пакет UC:**",
@@ -160,5 +161,4 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
