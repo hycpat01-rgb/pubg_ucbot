@@ -7,14 +7,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-# Ваш токен бота
 TOKEN = "8892100518:AAFJ6-7pM2hwP9LEJkAPwOloaqiaku9Dy7w"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# ----------------- БАЗА ДАННЫХ (SQLite) -----------------
 def db_start():
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
@@ -33,7 +31,6 @@ db_start()
 class PurchaseState(StatesGroup):
     waiting_for_player_id = State()
 
-# ----------------- КОМАНДА /START -----------------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
@@ -58,9 +55,9 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
-# ----------------- МЕНЮ ПОКУПКИ UC (НОВЫЕ ПАКЕТЫ) -----------------
 @dp.callback_query(F.data == "buy_uc")
 async def uc_packages(callback: types.CallbackQuery):
+    await callback.answer()  # Сразу убираем анимацию загрузки с кнопки
     builder = InlineKeyboardBuilder()
     builder.button(text="60 UC - 90 ₽", callback_data="uc_60")
     builder.button(text="325 UC - 450 ₽", callback_data="uc_325")
@@ -76,19 +73,19 @@ async def uc_packages(callback: types.CallbackQuery):
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @dp.callback_query(F.data.startswith("uc_"))
 async def select_uc(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
     uc_type = callback.data.split("_")[1]
     await state.update_data(chosen_uc=uc_type)
     
     await callback.message.answer(
         "🆔 Пожалуйста, введите ваш **Player ID** в PUBG Mobile:\n"
-        "(Пример: `5123456789`)"
+        "(Пример: `5123456789`)",
+        parse_mode="Markdown"
     )
     await state.set_state(PurchaseState.waiting_for_player_id)
-    await callback.answer()
 
 @dp.message(PurchaseState.waiting_for_player_id)
 async def process_player_id(message: types.Message, state: FSMContext):
@@ -109,12 +106,13 @@ async def process_player_id(message: types.Message, state: FSMContext):
         f"📦 Пакет: **{chosen_uc} UC**\n"
         f"🆔 Игровой ID: `{player_id}`\n\n"
         f"💳 Для оплаты переведите сумму на нашу карту и отправьте чек сюда:\n"
-        f"*(Номер карты: 2202 2062 3665 0284)*"
+        f"*(Номер карты: 2202 2062 3665 0284)*",
+        parse_mode="Markdown"
     )
 
-# ----------------- ПРОФИЛЬ -----------------
 @dp.callback_query(F.data == "profile")
 async def show_profile(callback: types.CallbackQuery):
+    await callback.answer()
     user_id = callback.from_user.id
     
     conn = sqlite3.connect("bot_database.db")
@@ -135,10 +133,10 @@ async def show_profile(callback: types.CallbackQuery):
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @dp.callback_query(F.data == "back_home")
 async def back_home(callback: types.CallbackQuery):
+    await callback.answer()
     builder = InlineKeyboardBuilder()
     builder.button(text="🛒 Купить UC", callback_data="buy_uc")
     builder.button(text="👤 Мой профиль", callback_data="profile")
@@ -150,12 +148,11 @@ async def back_home(callback: types.CallbackQuery):
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @dp.callback_query(F.data == "support")
 async def support_handler(callback: types.CallbackQuery):
-    await callback.message.answer("🛠 Для связи с администратором: @arrhiv1")
     await callback.answer()
+    await callback.message.answer("🛠 Для связи с администратором: @arrhiv1")
 
 async def main():
     await dp.start_polling(bot)
