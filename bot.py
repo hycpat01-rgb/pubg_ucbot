@@ -18,8 +18,8 @@ API_KEY = "YOUR_SUPPLIER_API_KEY"
 
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (963) 258 78 84`\n(Получатель: Нусратулло Носиров.)"
 ASIA_DETAILS = "🌏 **Карты стран Азии:**\nНомер карты: `4400 0555 3145 2345`\n(Душанбе Сити)"
-ADMIN_USERNAME = "@fast_uc"  # Установлен контакт из вашего скриншота
-SITE_URL = "https://your-website.com"
+ADMIN_USERNAME = "@arrhiv1"  # Установлен контакт из вашего скриншота
+SITE_URL = "https://t.me/ALEXUCSHOP"
 # ===================================================
 
 logging.basicConfig(level=logging.INFO)
