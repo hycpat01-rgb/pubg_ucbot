@@ -11,7 +11,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 # ==================== НАСТРОЙКИ (РЕКВИЗИТЫ) ====================
 TOKEN = "8892100518:AAFJ6-7pM2hwP9LEJkAPwOloaqiaku9Dy7w"
 
-# Реквизиты для ручного пополнения баланса (если требуется)
+# ID администратора для получения уведомлений о новых оплатах и заказах
+ADMIN_CHAT_ID = 123456789  # Замените на ваш реальный Telegram ID
+
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (999) 000-00-00`\n(Получатель: Имя Ф.)"
 ASIA_DETAILS = "🌏 **Карты стран Азии (Казахстан / Узбекистан / др.):**\nНомер карты: `4400 0000 0000 0000`\n(Банк / Получатель)"
 
@@ -26,7 +28,6 @@ dp = Dispatcher(storage=MemoryStorage())
 def db_start():
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
-    # Таблица пользователей (баланс, игровой ID)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -35,7 +36,6 @@ def db_start():
             balance REAL DEFAULT 0.0
         )
     """)
-    # Таблица для привязанных карт пользователей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_cards (
             user_id INTEGER,
@@ -51,7 +51,6 @@ class PurchaseState(StatesGroup):
     waiting_for_player_id = State()
     waiting_for_card = State()
 
-# Цены пакетов UC
 UC_PRICES = {
     "60": 90.0,
     "325": 450.0,
@@ -60,6 +59,22 @@ UC_PRICES = {
     "3850": 4600.0,
     "8100": 9200.0
 }
+
+# Функция отправки уведомления администратору о заказе
+async def notify_admin(user_id, username, player_id, chosen_uc, price, payment_type):
+    try:
+        text = (
+            f"🚨 **НОВЫЙ ЗАКАЗ НА ПОКУПКУ UC!**\n\n"
+            f"👤 Покупатель: @{username} (ID: `{user_id}`)\n"
+            f"🆔 Игровой ID: `{player_id}`\n"
+            f"📦 Пакет: **{chosen_uc} UC**\n"
+            f"💵 Сумма: **{int(price)} ₽**\n"
+            f"💳 Способ оплаты: {payment_type}\n\n"
+            f"⚠️ *Необходимо зачислить UC на аккаунт игрока в PUBG Mobile!*"
+        )
+        await bot.send_message(ADMIN_CHAT_ID, text, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление админу: {e}")
 
 # ----------------- КОМАНДА /START -----------------
 @dp.message(Command("start"))
@@ -140,7 +155,6 @@ async def process_player_id(message: types.Message, state: FSMContext):
     
     builder = InlineKeyboardBuilder()
     
-    # Кнопки в зависимости от наличия карты или баланса
     if card_row:
         builder.button(text=f"💳 Оплатить привязанной картой ({int(price)} ₽)", callback_data=f"pay_card_{chosen_uc}")
     if balance >= price:
@@ -159,17 +173,18 @@ async def process_player_id(message: types.Message, state: FSMContext):
         f"💵 Сумма к оплате: **{int(price)} ₽**\n"
         f"💰 Ваш баланс: **{balance} ₽**"
         f"{card_text}\n\n"
-        f"Выберите способ оплаты для автоматического зачисления:",
+        f"Выберите способ оплаты:",
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
 
-# Оплата с привязанной карты (Автоматическая покупка)
+# Оплата с привязанной карты
 @dp.callback_query(F.data.startswith("pay_card_"))
 async def pay_with_card(callback: types.CallbackQuery):
     uc_type = callback.data.split("_")[2]
     price = UC_PRICES.get(uc_type, 0)
     user_id = callback.from_user.id
+    username = callback.from_user.username or "Без имени"
     
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
@@ -178,12 +193,15 @@ async def pay_with_card(callback: types.CallbackQuery):
     player_id = row[0] if row else "Не найден"
     conn.close()
     
+    # Отправляем уведомление администратору о покупке с карты
+    await notify_admin(user_id, username, player_id, uc_type, price, "Привязанная карта 💳")
+    
     await callback.message.edit_text(
         f"🎉 **Оплата с карты прошла успешно!**\n\n"
         f"📦 Пакет: **{uc_type} UC**\n"
         f"🆔 Игровой ID: `{player_id}`\n"
         f"💵 Списано с карты: **{int(price)} ₽**\n\n"
-        f"🚀 **UC автоматически отправлены на ваш игровой аккаунт!** Спасибо за покупку.",
+        f"🚀 **Заказ оформлен!** UC отправляются на указанный игровой ID.",
         parse_mode="Markdown"
     )
 
@@ -193,6 +211,7 @@ async def pay_with_balance(callback: types.CallbackQuery):
     uc_type = callback.data.split("_")[2]
     price = UC_PRICES.get(uc_type, 0)
     user_id = callback.from_user.id
+    username = callback.from_user.username or "Без имени"
     
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
@@ -211,12 +230,15 @@ async def pay_with_balance(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     
+    # Отправляем уведомление администратору о покупке с баланса
+    await notify_admin(user_id, username, player_id, uc_type, price, "Внутренний баланс 💰")
+    
     await callback.message.edit_text(
         f"🎉 **Покупка за счет баланса успешна!**\n\n"
         f"📦 Пакет: **{uc_type} UC**\n"
         f"🆔 Игровой ID: `{player_id}`\n"
         f"💰 Остаток на балансе: **{new_balance} ₽**\n\n"
-        f"🚀 **UC автоматически отправлены на ваш аккаунт!**",
+        f"🚀 **Заказ оформлен!** UC отправляются на указанный игровой ID.",
         parse_mode="Markdown"
     )
 
@@ -255,7 +277,6 @@ async def show_profile(callback: types.CallbackQuery):
         parse_mode="Markdown"
     )
 
-# Шаг добавления карты
 @dp.callback_query(F.data == "add_card")
 async def start_add_card(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
