@@ -10,7 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 # ==================== НАСТРОЙКИ (РЕКВИЗИТЫ) ====================
 TOKEN = "8892100518:AAFJ6-7pM2hwP9LEJkAPwOloaqiaku9Dy7w"
-ADMIN_CHAT_ID = 1231002682  # ЗАМЕНИТЕ НА СВОЙ ЦИФРОВОЙ TELEGRAM ID (например: 123456789)
+ADMIN_CHAT_ID = 1231002682  # Ваш цифровой Telegram ID
 
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (999) 000-00-00`\n(Получатель: Имя Ф.)"
 ASIA_DETAILS = "🌏 **Карты стран Азии (Казахстан / Узбекистан / др.):**\nНомер карты: `4400 0000 0000 0000`\n(Банк / Получатель)"
@@ -63,12 +63,7 @@ UC_PRICES = {
 
 # Функция имитации автоматической покупки UC с официального сайта
 async def auto_buy_uc_from_official_site(player_id: str, uc_type: str) -> bool:
-    """
-    Здесь должна быть ваша логика автопокупки (интеграция с поставщиком, 
-    либо скрипт автоматизации браузера, отправляющий запрос на пополнение игрового ID).
-    Возвращает True в случае успеха.
-    """
-    await asyncio.sleep(2)  # Имитация запроса к сайту
+    await asyncio.sleep(2)
     return True
 
 # ----------------- КОМАНДА /START -----------------
@@ -180,6 +175,7 @@ async def pay_with_card_request(callback: types.CallbackQuery, state: FSMContext
     price = UC_PRICES.get(uc_type, 0)
     
     await state.update_data(chosen_uc=uc_type, price=price, pay_type="Привязанная карта 💳")
+    await state.set_state(PurchaseState.waiting_for_payment_screenshot)
     
     builder = InlineKeyboardBuilder()
     builder.button(text="⬅️ Отменить", callback_data="buy_uc")
@@ -192,9 +188,8 @@ async def pay_with_card_request(callback: types.CallbackQuery, state: FSMContext
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
-    await state.set_state(PurchaseState.waiting_for_payment_screenshot)
 
-# Оплата с баланса (автоматическое списание и переход к покупке/заказу)
+# Оплата с баланса
 @dp.callback_query(F.data.startswith("pay_bal_"))
 async def pay_with_balance(callback: types.CallbackQuery):
     uc_type = callback.data.split("_")[2]
@@ -218,7 +213,6 @@ async def pay_with_balance(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     
-    # Запускаем автоматическую покупку с официального сайта
     success = await auto_buy_uc_from_official_site(player_id, uc_type)
     
     if success:
@@ -231,7 +225,6 @@ async def pay_with_balance(callback: types.CallbackQuery):
             parse_mode="Markdown"
         )
     else:
-        # Возвращаем средства при сбое
         conn = sqlite3.connect("bot_database.db")
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (price, user_id))
@@ -355,13 +348,13 @@ async def process_topup_amount(message: types.Message, state: FSMContext):
         return
         
     await state.update_data(topup_amount=amount)
+    await state.set_state(PurchaseState.waiting_for_screenshot)
     
     await message.answer(
         f"✅ Сумма: **{amount} ₽** запомнена.\n\n"
         f"📸 Теперь **отправьте скриншот (фото)** чека об оплате в этот чат:",
         parse_mode="Markdown"
     )
-    await state.set_state(PurchaseState.waiting_for_screenshot)
 
 @dp.message(PurchaseState.waiting_for_screenshot, F.photo)
 async def process_screenshot(message: types.Message, state: FSMContext):
