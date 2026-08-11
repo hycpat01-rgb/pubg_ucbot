@@ -18,7 +18,7 @@ API_KEY = "YOUR_SUPPLIER_API_KEY"
 
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (963) 258 78 84`\n(Получатель: Нусратулло Носиров.)"
 ASIA_DETAILS = "🌏 **Карты стран Азии:**\nНомер карты: `4400 0555 3145 2345`\n(Душанбе Сити)"
-ADMIN_USERNAME = "@arrhiv1"  # Установлен контакт из вашего скриншота
+ADMIN_USERNAME = "@arrhiv1"  # Установлен измененный юзернейм
 SITE_URL = "https://t.me/ALEXUCSHOP"
 # ===================================================
 
@@ -163,7 +163,6 @@ async def steam_menu(message: types.Message):
 async def all_games_menu(message: types.Message):
     await message.answer("🌐 Список всех доступных игр:", reply_markup=get_main_reply_keyboard())
 
-# Обновленный блок помощи точь-в-точь как на скриншоте
 @dp.message(F.text == "💬 Помощь")
 async def help_menu(message: types.Message):
     help_text = (
