@@ -18,8 +18,8 @@ API_KEY = "YOUR_SUPPLIER_API_KEY"
 
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (963) 258 78 84`\n(Получатель: Нусратулло Носиров.)"
 ASIA_DETAILS = "🌏 **Карты стран Азии:**\nНомер карты: `4400 0555 3145 2345`\n(Душанбе Сити)"
-ADMIN_USERNAME = "@arrhiv1"
-SITE_URL = "https://your-website.com" # Укажите ссылку на свой сайт
+ADMIN_USERNAME = "@fast_uc"  # Установлен контакт из вашего скриншота
+SITE_URL = "https://your-website.com"
 # ===================================================
 
 logging.basicConfig(level=logging.INFO)
@@ -48,7 +48,6 @@ class PurchaseState(StatesGroup):
     waiting_for_screenshot = State()
     waiting_for_payment_screenshot = State()
 
-# Полный список пакетов, включая 81000 UC как на скриншоте
 UC_PRICES = {
     "60": 80.0, "120": 159.0,
     "325": 402.0, "385": 478.0,
@@ -125,18 +124,14 @@ async def uc_packages_menu(message: types.Message):
         ]
         builder.row(*row)
         
-    # Если остался нечетный элемент (81000 UC) — добавляем его на всю ширину по центру
     if len(items) % 2 != 0:
         last_item = items[-1]
         builder.row(types.InlineKeyboardButton(text=f"🪙 {last_item[0]} - {int(last_item[1])}₽", callback_data=f"uc_{last_item[0]}"))
         
-    # Кнопки Популярность и VIP внизу сетки, как на вашем скриншоте
     builder.row(
         types.InlineKeyboardButton(text="🍗 ПОПУЛЯРНОСТЬ", callback_data="menu_popularity"),
         types.InlineKeyboardButton(text="💎 VIP", callback_data="menu_vip")
     )
-    
-    # Кнопка перехода на сайт
     builder.row(types.InlineKeyboardButton(text="Перейти на сайт ↗", url=SITE_URL))
     
     text = (
@@ -168,9 +163,22 @@ async def steam_menu(message: types.Message):
 async def all_games_menu(message: types.Message):
     await message.answer("🌐 Список всех доступных игр:", reply_markup=get_main_reply_keyboard())
 
+# Обновленный блок помощи точь-в-точь как на скриншоте
 @dp.message(F.text == "💬 Помощь")
 async def help_menu(message: types.Message):
-    await message.answer(f"🛠 Если возникнут какие-то вопросы:\n{ADMIN_USERNAME}", reply_markup=get_main_reply_keyboard())
+    help_text = (
+        "1) Зачисление может идти до 3 минут, если вы приобрели 720UC, то сначала вам придет 660UC, а потом 60 UC, также с другими паками, например: 180UC = 60 UC + 60 UC + 60 UC\n\n"
+        "На аккаунт приходят все uc\n"
+        "В «подарок за покупку» засчитает часть\n"
+        "С 325 юс засчитывается 300\n"
+        "С 660 юс засчитывается 600\n"
+        "С 1800 юс засчитывается 1500\n"
+        "С 3850 юс засчитывается 3000\n"
+        "С 8100 юс засчитывается 6000\n\n"
+        "2) Мы платим комиссию за использование платежной системы, поэтому цены могут быть чуть выше\n\n"
+        f"3) Более 100.000 заказов были сделаны через бота и 100% людей получили свои UC, если у вас что-то произошло, просто напишите {ADMIN_USERNAME}"
+    )
+    await message.answer(help_text, reply_markup=get_main_reply_keyboard())
 
 @dp.message(F.text == "⭐ Отзывы")
 async def reviews_menu(message: types.Message):
