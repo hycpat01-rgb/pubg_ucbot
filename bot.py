@@ -19,6 +19,7 @@ API_KEY = "YOUR_SUPPLIER_API_KEY"
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (963) 258 78 84`\n(Получатель: Нусратулло Носиров.)"
 ASIA_DETAILS = "🌏 **Карты стран Азии:**\nНомер карты: `4400 0555 3145 2345`\n(Душанбе Сити)"
 ADMIN_USERNAME = "@arrhiv1"
+SITE_URL = "https://your-website.com" # Укажите ссылку на свой сайт
 # ===================================================
 
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +48,7 @@ class PurchaseState(StatesGroup):
     waiting_for_screenshot = State()
     waiting_for_payment_screenshot = State()
 
+# Полный список пакетов, включая 81000 UC как на скриншоте
 UC_PRICES = {
     "60": 80.0, "120": 159.0,
     "325": 402.0, "385": 478.0,
@@ -58,7 +60,8 @@ UC_PRICES = {
     "8100": 8054.0, "9900": 10070.0,
     "11950": 12086.0, "16200": 16109.0,
     "24300": 24163.0, "32400": 32218.0,
-    "40500": 40272.0, "48600": 48326.0
+    "40500": 40272.0, "48600": 48326.0,
+    "81000": 80544.0
 }
 
 async def auto_buy_uc_from_official_site(player_id: str, uc_type: str) -> bool:
@@ -75,7 +78,6 @@ async def auto_buy_uc_from_official_site(player_id: str, uc_type: str) -> bool:
         logging.error(f"API Error: {e}")
         return False
 
-# Нижняя клавиатура точь-в-точь как на вашем скриншоте
 def get_main_reply_keyboard():
     kb = ReplyKeyboardBuilder()
     kb.button(text="🛒 Купить UC / VIP / ПП")
@@ -84,7 +86,6 @@ def get_main_reply_keyboard():
     kb.button(text="🌐 Все игры")
     kb.button(text="💬 Помощь")
     kb.button(text="⭐ Отзывы")
-    # Расположение: 1 большая кнопка сверху, затем по 2 в ряд, и в конце 2 вспомогательные
     kb.adjust(1, 1, 1, 1, 2)
     return kb.as_markup(resize_keyboard=True)
 
@@ -117,25 +118,47 @@ async def uc_packages_menu(message: types.Message):
     builder = InlineKeyboardBuilder()
     
     items = list(UC_PRICES.items())
-    for i in range(0, len(items), 2):
-        row = [types.InlineKeyboardButton(text=f"🛒 {items[i][0]} UC - {int(items[i][1])}₽", callback_data=f"uc_{items[i][0]}")]
-        if i + 1 < len(items):
-            row.append(types.InlineKeyboardButton(text=f"🛒 {items[i+1][0]} UC - {int(items[i+1][1])}₽", callback_data=f"uc_{items[i+1][0]}"))
+    for i in range(0, len(items) - 1, 2):
+        row = [
+            types.InlineKeyboardButton(text=f"🪙 {items[i][0]} - {int(items[i][1])}₽", callback_data=f"uc_{items[i][0]}"),
+            types.InlineKeyboardButton(text=f"🪙 {items[i+1][0]} - {int(items[i+1][1])}₽", callback_data=f"uc_{items[i+1][0]}")
+        ]
         builder.row(*row)
         
-    builder.row(types.InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile"))
-    
-    await message.answer(
-        "✅ **Пополнение происходит автоматически в течение 1-5 минут.**\n"
-        "⚠️ *Пополнение доступно на все регионы, кроме Китая, Кореи, Тайваня и Вьетнама.*\n\n"
-        "📦 **Выберите пакет UC:**",
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
+    # Если остался нечетный элемент (81000 UC) — добавляем его на всю ширину по центру
+    if len(items) % 2 != 0:
+        last_item = items[-1]
+        builder.row(types.InlineKeyboardButton(text=f"🪙 {last_item[0]} - {int(last_item[1])}₽", callback_data=f"uc_{last_item[0]}"))
+        
+    # Кнопки Популярность и VIP внизу сетки, как на вашем скриншоте
+    builder.row(
+        types.InlineKeyboardButton(text="🍗 ПОПУЛЯРНОСТЬ", callback_data="menu_popularity"),
+        types.InlineKeyboardButton(text="💎 VIP", callback_data="menu_vip")
     )
+    
+    # Кнопка перехода на сайт
+    builder.row(types.InlineKeyboardButton(text="Перейти на сайт ↗", url=SITE_URL))
+    
+    text = (
+        "✅ **Пополнение происходит автоматически в течение 1-5 минут.**\n\n"
+        "⚠️ *Пополнение доступно на все регионы, кроме Китая, Кореи, Тайваня и Вьетнама.*"
+    )
+    
+    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
 
 @dp.message(F.text == "🔥 Купить популярность")
 async def popular_menu(message: types.Message):
     await message.answer("🔥 Раздел покупки популярности в разработке.", reply_markup=get_main_reply_keyboard())
+
+@dp.callback_query(F.data == "menu_popularity")
+async def inline_popularity(callback: types.CallbackQuery):
+    await callback.answer("Раздел популярности")
+    await callback.message.answer("🔥 Раздел покупки популярности в разработке.")
+
+@dp.callback_query(F.data == "menu_vip")
+async def inline_vip(callback: types.CallbackQuery):
+    await callback.answer("Раздел VIP")
+    await callback.message.answer("💎 Раздел VIP пополнения в разработке.")
 
 @dp.message(F.text == "🎮 Пополнить Steam")
 async def steam_menu(message: types.Message):
