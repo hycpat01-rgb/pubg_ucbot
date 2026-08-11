@@ -132,7 +132,9 @@ async def uc_packages_menu(message: types.Message):
         types.InlineKeyboardButton(text="🍗 ПОПУЛЯРНОСТЬ", callback_data="menu_popularity"),
         types.InlineKeyboardButton(text="💎 VIP", callback_data="menu_vip")
     )
-    builder.row(types.InlineKeyboardButton(text="Перейти на сайт ↗", url=SITE_URL))
+    builder.row(
+        types.InlineKeyboardButton(text="Перейти в ТГ группу ↗", url=SITE_URL)
+    )
     
     text = (
         "✅ **Пополнение происходит автоматически в течение 1-5 минут.**\n\n"
@@ -344,7 +346,7 @@ async def admin_trigger_autobuy(callback: types.CallbackQuery):
             pass
         await callback.message.edit_caption(caption=callback.message.caption + "\n\n✅ **СТАТУС: UC отправлены автоматически!**", reply_markup=None)
     else:
-        await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **СТАТУС: Ошибка API поставщика!**", reply_markup=None)
+        await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **СТАТUG: Ошибка API поставщика!**", reply_markup=None)
 
 @dp.callback_query(F.data == "top_up")
 async def top_up_balance(callback: types.CallbackQuery):
