@@ -47,7 +47,6 @@ class PurchaseState(StatesGroup):
     waiting_for_screenshot = State()
     waiting_for_payment_screenshot = State()
 
-# Полный список пакетов UC как на вашем скриншоте (включая Популярность и VIP)
 UC_PRICES = {
     "60": 80.0, "120": 159.0,
     "325": 402.0, "385": 478.0,
@@ -76,14 +75,17 @@ async def auto_buy_uc_from_official_site(player_id: str, uc_type: str) -> bool:
         logging.error(f"API Error: {e}")
         return False
 
-# Главная клавиатура (кнопки внизу чата как на скриншоте)
+# Нижняя клавиатура точь-в-точь как на вашем скриншоте
 def get_main_reply_keyboard():
     kb = ReplyKeyboardBuilder()
-    kb.button(text="📦 Купить UC / VIP / ПП")
+    kb.button(text="🛒 Купить UC / VIP / ПП")
     kb.button(text="🔥 Купить популярность")
     kb.button(text="🎮 Пополнить Steam")
     kb.button(text="🌐 Все игры")
-    kb.adjust(1, 1, 1, 1)
+    kb.button(text="💬 Помощь")
+    kb.button(text="⭐ Отзывы")
+    # Расположение: 1 большая кнопка сверху, затем по 2 в ряд, и в конце 2 вспомогательные
+    kb.adjust(1, 1, 1, 1, 2)
     return kb.as_markup(resize_keyboard=True)
 
 @dp.message(Command("start"))
@@ -98,18 +100,22 @@ async def cmd_start(message: types.Message, state: FSMContext):
     conn.commit()
     conn.close()
     
+    welcome_text = (
+        "Добро пожаловать 🔥\n\n"
+        "Это автоматический бот пополнения, который мгновенно доставит UC на ваш аккаунт 24/7.\n"
+        "Ваши покупки полностью защищены, также вы можете запросить чек на любое пополнение."
+    )
+    
     await message.answer(
-        "👋 **Добро пожаловать!**\nВыберите нужный раздел в меню снизу 👇",
+        welcome_text,
         reply_markup=get_main_reply_keyboard(),
         parse_mode="Markdown"
     )
 
-# Обработка нажатия на нижнюю кнопку "Купить UC"
-@dp.message(F.text == "📦 Купить UC / VIP / ПП")
+@dp.message(F.text == "🛒 Купить UC / VIP / ПП")
 async def uc_packages_menu(message: types.Message):
     builder = InlineKeyboardBuilder()
     
-    # Формируем сетку по 2 колонки, как на скриншоте
     items = list(UC_PRICES.items())
     for i in range(0, len(items), 2):
         row = [types.InlineKeyboardButton(text=f"🛒 {items[i][0]} UC - {int(items[i][1])}₽", callback_data=f"uc_{items[i][0]}")]
@@ -138,6 +144,14 @@ async def steam_menu(message: types.Message):
 @dp.message(F.text == "🌐 Все игры")
 async def all_games_menu(message: types.Message):
     await message.answer("🌐 Список всех доступных игр:", reply_markup=get_main_reply_keyboard())
+
+@dp.message(F.text == "💬 Помощь")
+async def help_menu(message: types.Message):
+    await message.answer(f"🛠 Если возникнут какие-то вопросы:\n{ADMIN_USERNAME}", reply_markup=get_main_reply_keyboard())
+
+@dp.message(F.text == "⭐ Отзывы")
+async def reviews_menu(message: types.Message):
+    await message.answer("⭐ Ссылка на канал с отзывами наших клиентов: (укажите вашу ссылку)", reply_markup=get_main_reply_keyboard())
 
 @dp.callback_query(F.data.startswith("uc_"))
 async def select_uc(callback: types.CallbackQuery, state: FSMContext):
