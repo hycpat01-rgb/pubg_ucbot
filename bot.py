@@ -10,7 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 # ==================== НАСТРОЙКИ (РЕКВИЗИТЫ) ====================
 TOKEN = "8892100518:AAFJ6-7pM2hwP9LEJkAPwOloaqiaku9Dy7w"
-ADMIN_CHAT_ID = @arrhiv1  # Укажите ваш Telegram ID (куда приходят чеки и заказы)
+ADMIN_CHAT_ID = 123456789  # ЗАМЕНИТЕ НА СВОЙ ЦИФРОВОЙ TELEGRAM ID (например: 123456789)
 
 SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (999) 000-00-00`\n(Получатель: Имя Ф.)"
 ASIA_DETAILS = "🌏 **Карты стран Азии (Казахстан / Узбекистан / др.):**\nНомер карты: `4400 0000 0000 0000`\n(Банк / Получатель)"
@@ -50,6 +50,7 @@ class PurchaseState(StatesGroup):
     waiting_for_card = State()
     waiting_for_topup_amount = State()
     waiting_for_screenshot = State()
+    waiting_for_payment_screenshot = State()
 
 UC_PRICES = {
     "60": 90.0,
@@ -172,36 +173,28 @@ async def process_player_id(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-# Оплата с привязанной карты (Автоматическая покупка и отправка на ID)
+# Оплата картой (вывод реквизитов и запрос скриншота чека)
 @dp.callback_query(F.data.startswith("pay_card_"))
-async def pay_with_card(callback: types.CallbackQuery):
+async def pay_with_card_request(callback: types.CallbackQuery, state: FSMContext):
     uc_type = callback.data.split("_")[2]
     price = UC_PRICES.get(uc_type, 0)
-    user_id = callback.from_user.id
     
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT player_id FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    player_id = row[0] if row else "Не найден"
-    conn.close()
+    await state.update_data(chosen_uc=uc_type, price=price, pay_type="Привязанная карта 💳")
     
-    # Запускаем автоматическую покупку с официального сайта
-    success = await auto_buy_uc_from_official_site(player_id, uc_type)
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Отменить", callback_data="buy_uc")
     
-    if success:
-        await callback.message.edit_text(
-            f"🎉 **Оплата с карты прошла успешно!**\n\n"
-            f"📦 Пакет: **{uc_type} UC**\n"
-            f"🆔 Игровой ID: `{player_id}`\n"
-            f"💵 Списано с карты: **{int(price)} ₽**\n\n"
-            f"🚀 **UC успешно и автоматически отправлены на ваш игровой аккаунт!**",
-            parse_mode="Markdown"
-        )
-    else:
-        await callback.answer("❌ Ошибка при автоматической отправке UC. Обратитесь в поддержку.", show_alert=True)
+    await callback.message.edit_text(
+        f"💳 **Оплата заказа ({uc_type} UC)**\n\n"
+        f"Сумма к переводу: **{int(price)} ₽**\n\n"
+        f"{SBP_DETAILS}\n\n"
+        f"📸 Пожалуйста, совершите перевод и **отправьте скриншот (фото)** чека в этот чат:",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+    await state.set_state(PurchaseState.waiting_for_payment_screenshot)
 
-# Оплата с баланса (Автоматическая покупка и отправка на ID)
+# Оплата с баланса (автоматическое списание и переход к покупке/заказу)
 @dp.callback_query(F.data.startswith("pay_bal_"))
 async def pay_with_balance(callback: types.CallbackQuery):
     uc_type = callback.data.split("_")[2]
@@ -245,6 +238,75 @@ async def pay_with_balance(callback: types.CallbackQuery):
         conn.commit()
         conn.close()
         await callback.answer("❌ Ошибка отправки UC. Средства возвращены на баланс.", show_alert=True)
+
+# Получение скриншота оплаты заказа от пользователя
+@dp.message(PurchaseState.waiting_for_payment_screenshot, F.photo)
+async def process_payment_screenshot(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    chosen_uc = data.get("chosen_uc")
+    price = data.get("price")
+    pay_type = data.get("pay_type")
+    
+    user_id = message.from_user.id
+    username = message.from_user.username or "Без имени"
+    photo_id = message.photo[-1].file_id
+    
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT player_id FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    player_id = row[0] if row else "Не найден"
+    conn.close()
+    
+    await state.clear()
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Заказ выполнен / UC отправлены", callback_data=f"order_done_{user_id}_{chosen_uc}")
+    builder.adjust(1)
+    
+    await bot.send_photo(
+        ADMIN_CHAT_ID,
+        photo=photo_id,
+        caption=(
+            f"🛒 **НОВЫЙ ЗАКАЗ НА UC (ЧЕК ПОЛУЧЕН)!**\n\n"
+            f"👤 Покупатель: @{username} (ID: `{user_id}`)\n"
+            f"🆔 Игровой ID: `{player_id}`\n"
+            f"📦 Пакет: **{chosen_uc} UC**\n"
+            f"💵 Сумма: **{int(price)} ₽**\n"
+            f"💳 Способ: {pay_type}\n\n"
+            f"⚠️ *Проверьте перевод, отправьте UC на игровой ID, затем нажмите кнопку ниже:*"
+        ),
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+    
+    await message.answer(
+        "✅ **Скриншот успешно отправлен администратору!**\n\n"
+        "Ожидайте проверки платежа и зачисления UC на ваш игровой аккаунт.",
+        parse_mode="Markdown"
+    )
+
+@dp.callback_query(F.data.startswith("order_done_"))
+async def admin_order_done(callback: types.CallbackQuery):
+    _, _, user_id_str, chosen_uc = callback.data.split("_")
+    user_id = int(user_id_str)
+    
+    try:
+        await bot.send_message(
+            user_id,
+            f"🎉 **Ваш заказ выполнен!**\n\n"
+            f"📦 Пакет **{chosen_uc} UC** успешно зачислен на ваш игровой аккаунт в PUBG Mobile.\n"
+            f"Спасибо за покупку!",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление пользователю: {e}")
+        
+    await callback.message.edit_caption(
+        caption=callback.message.caption + f"\n\n✅ **СТАТУС: Заказ выполнен (UC отправлены)**",
+        reply_markup=None
+    )
+    await callback.answer("Заказ отмечен как выполненный!")
 
 # ----------------- ПОПОЛНЕНИЕ БАЛАНСА ЧЕРЕЗ СКРИНШОТ -----------------
 @dp.callback_query(F.data == "top_up")
@@ -311,13 +373,11 @@ async def process_screenshot(message: types.Message, state: FSMContext):
     
     await state.clear()
     
-    # Кнопки для подтверждения администратором
     builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Зачислить", callback_data=f"confirm_topup_{user_id}_{amount}")
+    builder.button(text="✅ Зачислить баланс", callback_data=f"confirm_topup_{user_id}_{amount}")
     builder.button(text="❌ Отклонить", callback_data=f"cancel_topup_{user_id}")
     builder.adjust(2)
     
-    # Отправляем скриншот и заявку администратору
     await bot.send_photo(
         ADMIN_CHAT_ID,
         photo=photo_id,
@@ -333,11 +393,10 @@ async def process_screenshot(message: types.Message, state: FSMContext):
     
     await message.answer(
         "✅ **Скриншот успешно отправлен администратору!**\n\n"
-        "Как только администратор проверит перевод, баланс автоматически зачислится на ваш счет, и вы получите уведомление.",
+        "Как только администратор проверит перевод, баланс зачислится на ваш счет, и вы получите уведомление.",
         parse_mode="Markdown"
     )
 
-# Подтверждение пополнения администратором
 @dp.callback_query(F.data.startswith("confirm_topup_"))
 async def admin_confirm_topup(callback: types.CallbackQuery):
     _, _, user_id_str, amount_str = callback.data.split("_")
@@ -352,7 +411,6 @@ async def admin_confirm_topup(callback: types.CallbackQuery):
     new_balance = row[0] if row else amount
     conn.close()
     
-    # Уведомляем пользователя об успешном пополнении
     try:
         await bot.send_message(
             user_id,
@@ -365,7 +423,7 @@ async def admin_confirm_topup(callback: types.CallbackQuery):
         logging.error(f"Не удалось отправить уведомление пользователю: {e}")
         
     await callback.message.edit_caption(
-        caption=callback.message.caption + f"\n\n✅ **СТАТУС: Зачислено ({amount} ₽)**",
+        caption=callback.message.caption + f"\n\n✅ **СТАТУС: Баланс зачислен ({amount} ₽)**",
         reply_markup=None
     )
     await callback.answer("Средства успешно зачислены пользователю!")
