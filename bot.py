@@ -174,7 +174,7 @@ async def help_menu(message: types.Message):
 
 @dp.message(F.text == "⭐ Отзывы")
 async def reviews_menu(message: types.Message):
-    await message.answer("⭐ Ссылка на канал с отзывами наших клиентов: (укажите вашу ссылку)", reply_markup=get_main_reply_keyboard())
+    await message.answer("⭐ Ссылка на канал с отзывами наших клиентов: (t.me/ALEXUCSHOP)", reply_markup=get_main_reply_keyboard())
 
 @dp.callback_query(F.data.startswith("uc_"))
 async def select_uc(callback: types.CallbackQuery, state: FSMContext):
