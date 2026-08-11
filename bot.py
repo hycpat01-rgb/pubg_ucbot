@@ -12,8 +12,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 TOKEN = "8892100518:AAFJ6-7pM2hwP9LEJkAPwOloaqiaku9Dy7w"
 ADMIN_CHAT_ID = 1231002682  # Ваш цифровой Telegram ID
 
-SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (999) 000-00-00`\n(Получатель: Имя Ф.)"
-ASIA_DETAILS = "🌏 **Карты стран Азии (Казахстан / Узбекистан / др.):**\nНомер карты: `4400 0000 0000 0000`\n(Банк / Получатель)"
+SBP_DETAILS = "💳 **Сбер / Т-Банк (СБП):**\n`+7 (963) 258 78 84`\n(Получатель: Нусратулло Носиров.)"
+ASIA_DETAILS = "🌏 **Карты стран Азии (Казахстан / Узбекистан / др.):**\nНомер карты: `4400 0555 3145 2345 `\n(Банк /Душанбе Сити Получатель)"
 
 ADMIN_USERNAME = "@arrhiv1"
 # ===============================================================
@@ -34,12 +34,6 @@ def db_start():
             balance REAL DEFAULT 0.0
         )
     """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_cards (
-            user_id INTEGER,
-            card_number TEXT
-        )
-    """)
     conn.commit()
     conn.close()
 
@@ -47,7 +41,6 @@ db_start()
 
 class PurchaseState(StatesGroup):
     waiting_for_player_id = State()
-    waiting_for_card = State()
     waiting_for_topup_amount = State()
     waiting_for_screenshot = State()
     waiting_for_payment_screenshot = State()
@@ -136,45 +129,36 @@ async def process_player_id(message: types.Message, state: FSMContext):
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
     balance_row = cursor.fetchone()
     balance = balance_row[0] if balance_row else 0.0
-
-    cursor.execute("SELECT card_number FROM user_cards WHERE user_id = ?", (user_id,))
-    card_row = cursor.fetchone()
     conn.close()
     
     await state.clear()
     
     builder = InlineKeyboardBuilder()
-    
-    if card_row:
-        builder.button(text=f"💳 Оплатить привязанной картой ({int(price)} ₽)", callback_data=f"pay_card_{chosen_uc}")
+    builder.button(text=f"💳 Оплатить переводом ({int(price)} ₽)", callback_data=f"pay_card_{chosen_uc}")
     if balance >= price:
         builder.button(text=f"💰 Оплатить с баланса ({int(price)} ₽)", callback_data=f"pay_bal_{chosen_uc}")
         
-    builder.button(text="➕ Привязать другую карту", callback_data="add_card")
     builder.button(text="💳 Пополнить баланс", callback_data="top_up")
     builder.adjust(1)
-
-    card_text = f"\n💳 Привязанная карта: `{card_row[0]}`" if card_row else "\n💳 Карта не привязана."
 
     await message.answer(
         f"✅ **Данные сохранены!**\n\n"
         f"📦 Пакет: **{chosen_uc} UC**\n"
         f"🆔 Игровой ID: `{player_id}`\n"
         f"💵 Сумма к оплате: **{int(price)} ₽**\n"
-        f"💰 Ваш баланс: **{balance} ₽**"
-        f"{card_text}\n\n"
+        f"💰 Ваш баланс: **{balance} ₽**\n\n"
         f"Выберите способ оплаты:",
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
 
-# Оплата картой (вывод реквизитов и запрос скриншота чека)
+# Оплата переводом (вывод реквизитов и запрос скриншота чека)
 @dp.callback_query(F.data.startswith("pay_card_"))
 async def pay_with_card_request(callback: types.CallbackQuery, state: FSMContext):
     uc_type = callback.data.split("_")[2]
     price = UC_PRICES.get(uc_type, 0)
     
-    await state.update_data(chosen_uc=uc_type, price=price, pay_type="Привязанная карта 💳")
+    await state.update_data(chosen_uc=uc_type, price=price, pay_type="Перевод по реквизитам 💳")
     await state.set_state(PurchaseState.waiting_for_payment_screenshot)
     
     builder = InlineKeyboardBuilder()
@@ -301,7 +285,7 @@ async def admin_order_done(callback: types.CallbackQuery):
     )
     await callback.answer("Заказ отмечен как выполненный!")
 
-# ----------------- ПОПОЛНЕНИЕ БАЛАНСА ЧЕРЕЗ СКРИНШОТ -----------------
+# ----------------- ПОПОЛНЕНИЕ БАЛАНСА АВТОМАТИЧЕСКИ -----------------
 @dp.callback_query(F.data == "top_up")
 async def top_up_balance(callback: types.CallbackQuery):
     await callback.answer()
@@ -366,36 +350,7 @@ async def process_screenshot(message: types.Message, state: FSMContext):
     
     await state.clear()
     
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Зачислить баланс", callback_data=f"confirm_topup_{user_id}_{amount}")
-    builder.button(text="❌ Отклонить", callback_data=f"cancel_topup_{user_id}")
-    builder.adjust(2)
-    
-    await bot.send_photo(
-        ADMIN_CHAT_ID,
-        photo=photo_id,
-        caption=(
-            f"🔔 **Заявка на пополнение баланса!**\n\n"
-            f"👤 От: @{username} (ID: `{user_id}`)\n"
-            f"💵 Сумма: **{amount} ₽**\n\n"
-            f"Нажмите кнопку ниже для зачисления средств:"
-        ),
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
-    )
-    
-    await message.answer(
-        "✅ **Скриншот успешно отправлен администратору!**\n\n"
-        "Как только администратор проверит перевод, баланс зачислится на ваш счет, и вы получите уведомление.",
-        parse_mode="Markdown"
-    )
-
-@dp.callback_query(F.data.startswith("confirm_topup_"))
-async def admin_confirm_topup(callback: types.CallbackQuery):
-    _, _, user_id_str, amount_str = callback.data.split("_")
-    user_id = int(user_id_str)
-    amount = float(amount_str)
-    
+    # Автоматическое пополнение баланса в базе данных
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
@@ -404,42 +359,30 @@ async def admin_confirm_topup(callback: types.CallbackQuery):
     new_balance = row[0] if row else amount
     conn.close()
     
+    # Отправка копии чека администратору для контроля
     try:
-        await bot.send_message(
-            user_id,
-            f"🎉 **Ваш баланс успешно пополнен!**\n\n"
-            f"➕ Зачислено: **{amount} ₽**\n"
-            f"💰 Новый баланс: **{new_balance} ₽**",
+        await bot.send_photo(
+            ADMIN_CHAT_ID,
+            photo=photo_id,
+            caption=(
+                f"🔔 **АВТО-ПОПОЛНЕНИЕ БАЛАНСА!**\n\n"
+                f"👤 От: @{username} (ID: `{user_id}`)\n"
+                f"💵 Зачислено: **{amount} ₽**\n"
+                f"💰 Новый баланс: **{new_balance} ₽**\n\n"
+                f"*(Баланс зачислен автоматически)*"
+            ),
             parse_mode="Markdown"
         )
     except Exception as e:
-        logging.error(f"Не удалось отправить уведомление пользователю: {e}")
-        
-    await callback.message.edit_caption(
-        caption=callback.message.caption + f"\n\n✅ **СТАТУС: Баланс зачислен ({amount} ₽)**",
-        reply_markup=None
-    )
-    await callback.answer("Средства успешно зачислены пользователю!")
-
-@dp.callback_query(F.data.startswith("cancel_topup_"))
-async def admin_cancel_topup(callback: types.CallbackQuery):
-    user_id = int(callback.data.split("_")[2])
+        logging.error(f"Не удалось отправить чек админу: {e}")
     
-    try:
-        await bot.send_message(
-            user_id,
-            "❌ **Ваша заявка на пополнение баланса была отклонена администратором.**\n"
-            "Если возникли вопросы, обратитесь в поддержку.",
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
-        
-    await callback.message.edit_caption(
-        caption=callback.message.caption + f"\n\n❌ **СТАТУС: Отклонено**",
-        reply_markup=None
+    # Уведомление пользователю
+    await message.answer(
+        f"🎉 **Баланс успешно пополнен автоматически!**\n\n"
+        f"➕ Зачислено: **{amount} ₽**\n"
+        f"💰 Ваш новый баланс: **{new_balance} ₽**",
+        parse_mode="Markdown"
     )
-    await callback.answer("Заявка отклонена.")
 
 # ----------------- ПРОФИЛЬ И ПРОЧЕЕ -----------------
 @dp.callback_query(F.data == "profile")
@@ -451,17 +394,12 @@ async def show_profile(callback: types.CallbackQuery):
     cursor = conn.cursor()
     cursor.execute("SELECT player_id, balance FROM users WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
-    
-    cursor.execute("SELECT card_number FROM user_cards WHERE user_id = ?", (user_id,))
-    card_row = cursor.fetchone()
     conn.close()
     
     player_id = row[0] if row and row[0] else "Не зарегистрирован ❌"
     balance = row[1] if row and row[1] is not None else 0.0
-    card_number = card_row[0] if card_row else "Не привязана ❌"
     
     builder = InlineKeyboardBuilder()
-    builder.button(text="➕ Привязать / Изменить карту", callback_data="add_card")
     builder.button(text="💳 Пополнить баланс", callback_data="top_up")
     builder.button(text="⬅️ Назад", callback_data="back_home")
     builder.adjust(1)
@@ -470,43 +408,7 @@ async def show_profile(callback: types.CallbackQuery):
         f"👤 **Ваш профиль:**\n\n"
         f"🆔 Telegram ID: `{user_id}`\n"
         f"🎮 PUBG Player ID: `{player_id}`\n"
-        f"💳 Моя карта: `{card_number}`\n"
         f"💰 Баланс: **{balance} ₽**",
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
-    )
-
-@dp.callback_query(F.data == "add_card")
-async def start_add_card(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await callback.message.answer(
-        "💳 Введите номер вашей банковской карты для быстрой оплаты:\n"
-        "(Пример: `4400 1122 3344 5566`)",
-        parse_mode="Markdown"
-    )
-    await state.set_state(PurchaseState.waiting_for_card)
-
-@dp.message(PurchaseState.waiting_for_card)
-async def process_card_input(message: types.Message, state: FSMContext):
-    card_number = message.text.strip()
-    user_id = message.from_user.id
-    
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM user_cards WHERE user_id = ?", (user_id,))
-    cursor.execute("INSERT INTO user_cards (user_id, card_number) VALUES (?, ?)", (user_id, card_number))
-    conn.commit()
-    conn.close()
-    
-    await state.clear()
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text="👤 В мой профиль", callback_data="profile")
-    builder.button(text="🛒 Купить UC", callback_data="buy_uc")
-    builder.adjust(1)
-    
-    await message.answer(
-        f"✅ **Карта успешно привязана!**\n\nНомер: `{card_number}`",
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
